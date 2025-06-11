@@ -2,7 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import io from 'socket.io-client';
 import { useAuth } from '../context/AuthContext'; // Para obtener el ID del usuario actual
 
-const ENDPOINT = "http://localhost:5000"; // Asegúrate de que coincida con el puerto de tu backend
+const ENDPOINT = "https://encuentro-x-backend.onrender.com"; // Asegúrate de que coincida con el puerto de tu backend
 let socket; // Declara la variable globalmente para evitar reconexiones innecesarias
 
 const ChatScreen = ({ chatId }) => { // Recibe el ID del chat actual como prop
