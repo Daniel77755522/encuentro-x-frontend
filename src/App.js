@@ -1,4 +1,5 @@
 import React from 'react';
+// Asegúrate de que BrowserRouter esté importado si lo usas en otro lado o si no está implícito
 import { Routes, Route, Link, useNavigate, Navigate } from 'react-router-dom';
 import { APP_NAME } from './config';
 import Register from './components/auth/Register';
@@ -7,6 +8,8 @@ import PostForm from './components/PostForm';
 import PostList from './components/PostList';
 import ChatScreen from './components/ChatScreen';
 import { useAuth } from './context/AuthContext';
+// --- NUEVA IMPORTACIÓN: Tu componente de eliminación de cuenta ---
+import AccountDeletion from './components/auth/AccountDeletion'; // <--- AÑADE ESTA LÍNEA
 
 // import './App.css'; // Descomenta si usas este archivo CSS
 
@@ -36,6 +39,11 @@ function App() {
                         </>
                     ) : (
                         <>
+                            {/* --- NUEVO ENLACE: Eliminar Cuenta --- */}
+                            {/* Lo ideal es que esté en un lugar discreto, como "Configuración" */}
+                            {/* Por ahora lo pongo en la barra de navegación para visibilidad */}
+                            <Link to="/settings/delete-account" style={styles.navLink}>Eliminar Cuenta</Link> {/* <--- AÑADE ESTA LÍNEA */}
+
                             <Link to="/chat" style={styles.navLink}>Chat</Link>
                             <span style={styles.welcomeText}>¡Hola, {user?.username || 'Usuario'}!</span>
                             <button onClick={handleLogout} style={styles.logoutButton}>Cerrar Sesión</button>
@@ -67,6 +75,11 @@ function App() {
                         path="/chat"
                         element={isAuthenticated ? <ChatScreen chatId="general-chat" /> : <Navigate to="/login" />}
                     />
+                    {/* --- NUEVA RUTA: Para el componente de eliminación de cuenta --- */}
+                    <Route
+                        path="/settings/delete-account" // Define la URL para esta funcionalidad
+                        element={isAuthenticated ? <AccountDeletion /> : <Navigate to="/login" />} // Solo accesible si el usuario está autenticado
+                    /> {/* <--- AÑADE ESTA RUTA */}
                 </Routes>
             </main>
         </div>
