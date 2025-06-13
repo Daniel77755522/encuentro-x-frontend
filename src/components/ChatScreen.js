@@ -39,20 +39,28 @@ const ChatScreen = ({ chatId }) => {
             }
         });
 
+        // --- ¡CAMBIO CLAVE AQUÍ PARA EVITAR DUPLICADOS! ---
         socket.on('receiveMessage', (message) => {
             console.log('Mensaje recibido:', message);
-            // Asegúrate de que el mensaje no sea el tuyo si el servidor lo reenvía,
-            // para evitar duplicados. Si el servidor *no* lo reenvía a tu propio socket,
-            // entonces el filtro es solo para bloquear mensajes de otros usuarios.
-            if (message.sender._id !== user._id && blockedUsers.includes(message.sender._id)) {
+
+            // 1. Si el mensaje es del usuario actual (tú mismo), lo ignoramos.
+            //    Ya lo mostramos instantáneamente en la función sendMessage.
+            if (message.sender._id === user._id) {
+                console.log('Mensaje propio recibido (eco del servidor), ignorando para evitar duplicado.');
+                return; 
+            }
+
+            // 2. Si el mensaje es de otro usuario, aplicamos el filtro de bloqueo.
+            if (blockedUsers.includes(message.sender._id)) {
                 console.log(`Mensaje de ${message.sender.username} (${message.sender._id}) bloqueado localmente para ${user?.username}.`);
-                return; // No añadir mensajes de usuarios bloqueados (que no sean el propio)
+                return; // No añadir mensajes de usuarios bloqueados
             }
             
-            // Añadir el mensaje solo si no es duplicado y no es de un usuario bloqueado
-            // Opcional: Si el servidor envía un ID único al mensaje, puedes usarlo para el manejo de duplicados.
+            // 3. Si no es tu mensaje y no está bloqueado, entonces lo añadimos.
             setMessages((prevMessages) => [...prevMessages, message]);
         });
+        // --- FIN CAMBIO CLAVE ---
+
 
         return () => {
             console.log('Desconectando socket...');
