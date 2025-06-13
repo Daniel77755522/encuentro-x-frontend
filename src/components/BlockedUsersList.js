@@ -1,13 +1,12 @@
-// frontend/src/components/BlockedUsersList.js
 import React, { useContext } from 'react';
-import { BlockContext } from '../context/BlockContext'; // Asegúrate de que la ruta sea correcta
-import { useAuth } from '../context/AuthContext'; // Para obtener el token para las llamadas API
-import axios from 'axios'; // O puedes usar fetch API directamente
+import { BlockContext } from '../context/BlockContext';
+import { useAuth } from '../context/AuthContext';
+import axios from 'axios';
 
 const BlockedUsersList = () => {
-    // Usamos BlockContext para acceder a la lista de usuarios bloqueados y las funciones para actualizarlos
-    const { blockedUsers, blockedUserDetails, removeBlockedUser } = useContext(BlockContext);
-    const { token } = useAuth(); // Obtenemos el token del contexto de autenticación
+    // Eliminamos 'blockedUsers' de la desestructuración ya que no se usa en este componente.
+    const { blockedUserDetails, removeBlockedUser } = useContext(BlockContext);
+    const { token } = useAuth();
 
     const handleUnblockUser = async (userIdToUnblock) => {
         if (!token) {
@@ -16,15 +15,13 @@ const BlockedUsersList = () => {
         }
 
         try {
-            // Llama a tu endpoint de backend para desbloquear al usuario
             await axios.delete(`https://encuentro-x-frontend.onrender.com/api/users/unblock/${userIdToUnblock}`, {
                 headers: {
                     Authorization: `Bearer ${token}`,
                 },
             });
 
-            // Si la llamada es exitosa, actualiza el estado local en el contexto
-            removeBlockedUser(userIdToUnblock);
+            removeBlockedUser(userIdToUnblock); // Esta función sí la necesitamos y usa el ID
             alert('Usuario desbloqueado con éxito.');
         } catch (error) {
             console.error('Error al desbloquear usuario:', error.response?.data?.message || error.message);
@@ -99,7 +96,7 @@ const styles = {
     email: {
         color: '#777',
         marginLeft: '10px',
-        flexGrow: 1, // Permite que el email ocupe espacio
+        flexGrow: 1,
         textAlign: 'left',
     },
     unblockButton: {
