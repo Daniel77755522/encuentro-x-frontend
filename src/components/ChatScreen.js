@@ -1,78 +1,67 @@
-import React, { useState, useEffect, useRef, useContext } from 'react'; // <-- ¡NUEVO: useContext!
+import React, { useState, useEffect, useRef, useContext } from 'react';
 import io from 'socket.io-client';
-import { useAuth } from '../context/AuthContext'; // Para obtener el ID y token del usuario actual
-import { BlockContext } from '../context/BlockContext'; // <-- ¡NUEVO: Importa tu BlockContext!
-import axios from 'axios'; // <-- ¡NUEVO: Para las llamadas API REST (bloquear)!
+import { useAuth } from '../context/AuthContext';
+import { BlockContext } from '../context/BlockContext';
+import axios from 'axios';
 
 const ENDPOINT = "https://encuentro-x-backend.onrender.com";
-let socket; // Declara la variable globalmente para evitar reconexiones innecesarias
+let socket;
 
 const ChatScreen = ({ chatId }) => {
-    const { user, token } = useAuth(); // Obtén el usuario autenticado Y SU TOKEN del contexto
-    const { blockedUsers, addBlockedUser } = useContext(BlockContext); // <-- Obtén la lista de bloqueados y la función para añadir
+    const { user, token } = useAuth();
+    const { blockedUsers, addBlockedUser } = useContext(BlockContext);
     const [messages, setMessages] = useState([]);
     const [newMessage, setNewMessage] = useState('');
     const messagesEndRef = useRef(null);
 
     useEffect(() => {
         if (!user || !token) {
-            // No intentar conectar el socket si el usuario no está autenticado
             console.log('Usuario o token no disponible, saltando conexión de socket.');
             return;
         }
 
-        // 1. Conectar al servidor Socket.IO (¡AHORA CON AUTENTICACIÓN!)
         socket = io(ENDPOINT, {
             auth: {
-                token: token // <-- ¡ENVÍA EL TOKEN JWT AQUÍ PARA AUTENTICAR EL SOCKET!
+                token: token
             }
         });
 
-        // Manejar errores de conexión de Socket.IO
         socket.on('connect_error', (error) => {
             console.error('Error de conexión WebSocket:', error.message);
-            // Puedes mostrar un mensaje al usuario o intentar reconectar
-            if (error.message.includes('Authentication error')) {
-                alert('Fallo de autenticación WebSocket. Por favor, vuelve a iniciar sesión.');
-                // Opcional: Redirigir a login
-                // navigate('/login');
-            }
         });
 
         socket.on('connect', () => {
             console.log('Conectado al WebSocket del backend.');
-            // 2. Unirse a la sala de chat específica (el ID del chat actual)
             if (chatId) {
                 socket.emit('join_chat', chatId);
                 console.log(`Usuario ${user?.username} (${user?._id}) se unió a la sala: ${chatId}`);
                 // TODO: Aquí también cargar el historial de mensajes para este chatId
-                // Esto se haría con una petición Axios a tu ruta REST: axios.get(`/api/chats/${chatId}/messages`)
-                // Asegúrate de filtrar los mensajes históricos con la lista de bloqueados también.
             }
         });
 
-        // 3. Escuchar el evento 'receiveMessage' desde el servidor
         socket.on('receiveMessage', (message) => {
             console.log('Mensaje recibido:', message);
-            // ¡NUEVO: Filtro en el frontend para mensajes entrantes!
-            // Aunque el backend ya filtra, esto es una capa de seguridad y consistencia.
-            if (!blockedUsers.includes(message.sender._id)) {
-                setMessages((prevMessages) => [...prevMessages, message]);
-            } else {
+            // Asegúrate de que el mensaje no sea el tuyo si el servidor lo reenvía,
+            // para evitar duplicados. Si el servidor *no* lo reenvía a tu propio socket,
+            // entonces el filtro es solo para bloquear mensajes de otros usuarios.
+            if (message.sender._id !== user._id && blockedUsers.includes(message.sender._id)) {
                 console.log(`Mensaje de ${message.sender.username} (${message.sender._id}) bloqueado localmente para ${user?.username}.`);
+                return; // No añadir mensajes de usuarios bloqueados (que no sean el propio)
             }
+            
+            // Añadir el mensaje solo si no es duplicado y no es de un usuario bloqueado
+            // Opcional: Si el servidor envía un ID único al mensaje, puedes usarlo para el manejo de duplicados.
+            setMessages((prevMessages) => [...prevMessages, message]);
         });
 
-        // 4. Limpiar al desmontar el componente (desconectar socket)
         return () => {
             console.log('Desconectando socket...');
             if (socket) {
                 socket.disconnect();
             }
         };
-    }, [chatId, user, token, blockedUsers]); // Dependencias: Re-ejecutar si cambian el chat ID, user, token o la lista de bloqueados
+    }, [chatId, user, token, blockedUsers]);
 
-    // Efecto para hacer scroll al último mensaje cada vez que se actualizan los mensajes
     useEffect(() => {
         messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
     }, [messages]);
@@ -81,25 +70,26 @@ const ChatScreen = ({ chatId }) => {
         e.preventDefault();
         if (newMessage.trim() && user && chatId) {
             const messageData = {
-                // El backend ya obtiene senderId y senderUsername del socket autenticado,
-                // pero puedes incluirlos aquí para que el frontend lo maneje antes de que el socket responda.
-                // Sin embargo, para mayor seguridad, confía en el backend para senderId.
-                // El formato de messageToEmit en el backend es:
-                // { _id, sender: { _id: senderId, username: senderUsername }, content, chat, createdAt }
                 sender: {
-                    _id: user._id, // Usamos el ID del usuario actual
-                    username: user.username // Usamos el nombre de usuario actual
+                    _id: user._id,
+                    username: user.username
                 },
                 chatId: chatId,
                 content: newMessage.trim(),
                 createdAt: new Date().toISOString(),
+                // Puedes añadir un ID temporal único aquí si el backend no te da uno inmediatamente
+                // y necesitas una clave para el mensaje en el frontend antes de que llegue del server
+                // _id: Date.now().toString() + Math.random().toString(36).substr(2, 9)
             };
+            
+            // --- ¡IMPORTANTE! Añadir el mensaje al estado local ANTES de emitirlo ---
+            setMessages((prevMessages) => [...prevMessages, messageData]);
+
             socket.emit('sendMessage', messageData); // Envía el mensaje al servidor
             setNewMessage(''); // Limpia el input
         }
     };
 
-    // --- NUEVA FUNCIÓN: Para bloquear un usuario desde el chat ---
     const handleBlockUser = async (userIdToBlock) => {
         if (!token) {
             alert('Necesitas iniciar sesión para bloquear usuarios.');
@@ -116,7 +106,7 @@ const ChatScreen = ({ chatId }) => {
 
         try {
             await axios.post(
-                'https://encuentro-x-frontend.onrender.com/api/users/block', // Tu endpoint de bloqueo
+                'https://encuentro-x-backend.onrender.com/api/users/block', // Cambiado a backend.onrender.com
                 { blockedId: userIdToBlock },
                 {
                     headers: {
@@ -124,14 +114,13 @@ const ChatScreen = ({ chatId }) => {
                     },
                 }
             );
-            addBlockedUser(userIdToBlock); // Actualiza el contexto local
+            addBlockedUser(userIdToBlock);
             alert('Usuario bloqueado con éxito.');
         } catch (error) {
             console.error('Error al bloquear usuario:', error.response?.data?.message || error.message);
             alert('Error al bloquear usuario. Intenta de nuevo.');
         }
     };
-    // --- FIN NUEVA FUNCIÓN ---
 
     if (!user) {
         return <p>Por favor, inicia sesión para chatear.</p>;
@@ -147,22 +136,14 @@ const ChatScreen = ({ chatId }) => {
                     <p style={{ textAlign: 'center', color: '#666' }}>No hay mensajes aún. ¡Sé el primero en saludar!</p>
                 ) : (
                     messages.map((msg, index) => (
-                        // NO NECESITAMOS FILTRAR AQUÍ SI YA FILTRAMOS EN receiveMessage,
-                        // pero si cargaras historial de mensajes, SÍ necesitarías este filtro.
-                        // Para consistencia, lo dejamos aquí también.
-                        // if (blockedUsers.includes(msg.sender._id)) {
-                        //     return null; // O mostrar "Mensaje bloqueado"
-                        // }
-
                         <div
-                            key={index} // Idealmente, usar msg._id si viene de la DB
+                            key={index} // Idealmente usar msg._id si viene del servidor
                             style={msg.sender._id === user._id ? styles.myMessage : styles.otherMessage}
                         >
                             <strong>{msg.sender.username || "Usuario Desconocido"}:</strong> {msg.content}
                             <span style={styles.timestamp}> {new Date(msg.createdAt).toLocaleTimeString()}</span>
 
-                            {/* --- NUEVO: Botón de Bloquear (solo para mensajes de otros usuarios) --- */}
-                            {msg.sender._id !== user._id && ( // Solo muestra el botón si no es tu propio mensaje
+                            {msg.sender._id !== user._id && (
                                 <button
                                     onClick={() => handleBlockUser(msg.sender._id)}
                                     style={styles.blockButton}
@@ -170,7 +151,6 @@ const ChatScreen = ({ chatId }) => {
                                     {blockedUsers.includes(msg.sender._id) ? 'Bloqueado' : 'Bloquear'}
                                 </button>
                             )}
-                            {/* --- FIN NUEVO BOTÓN --- */}
                         </div>
                     ))
                 )}
@@ -223,7 +203,7 @@ const styles = {
         alignSelf: 'flex-end',
         wordWrap: 'break-word',
         boxShadow: '0 1px 1px rgba(0,0,0,0.05)',
-        position: 'relative', // Para posicionar el botón de bloquear
+        position: 'relative',
     },
     otherMessage: {
         backgroundColor: '#FFFFFF',
@@ -234,7 +214,7 @@ const styles = {
         alignSelf: 'flex-start',
         wordWrap: 'break-word',
         boxShadow: '0 1px 1px rgba(0,0,0,0.05)',
-        position: 'relative', // Para posicionar el botón de bloquear
+        position: 'relative',
     },
     timestamp: {
         fontSize: '0.75em',
@@ -270,7 +250,7 @@ const styles = {
     sendButtonHover: {
         backgroundColor: '#0056b3',
     },
-    blockButton: { // Estilos para el botón de bloquear
+    blockButton: {
         backgroundColor: '#ffc107',
         color: '#333',
         border: 'none',
@@ -280,10 +260,6 @@ const styles = {
         fontSize: '0.8em',
         marginLeft: '10px',
         transition: 'background-color 0.3s ease',
-        // Si quieres que el botón aparezca en la esquina, puedes usar absolute positioning
-        // position: 'absolute',
-        // top: '5px',
-        // right: '5px',
     },
     blockButtonHover: {
         backgroundColor: '#e0a800',
